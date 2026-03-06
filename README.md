@@ -2,7 +2,7 @@
 
 ## Intro
 
-This project helps you visualize portfolio allocation using an LLM agent deployed on Microsoft Foundry and orchestrated with the Microsoft Agent Framework. It will create pie chart visualizations in [`analysis.ipynb`](./analysis.ipynb) of your allocation in various market sectors. It visualized all accounts across brokerages combined as well as by account type (taxable brokerage, ROTH IRA, 401k).
+This project helps you visualize portfolio allocation using an LLM agent deployed on Microsoft Foundry and orchestrated with the Microsoft Agent Framework. It will create pie chart visualizations in [`analysis.ipynb`](./analysis.ipynb) of your allocation in various market sectors. It visualizes all accounts across brokerages combined as well as by account type (taxable brokerage, ROTH IRA, 401k).
 
 There is a mock data template file [`data.csv`](./data.csv). You may feel free to replace it with your actual portfolios to get personalized insights.
 
