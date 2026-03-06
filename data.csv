@@ -1,0 +1,14 @@
+ticker,num_shares,broker,type
+MSFT,24.0,BrokerOne,brokerage
+AAPL,18.0,BrokerOne,brokerage
+NVDA,10.0,BrokerOne,brokerage
+VOO,30.0,BrokerOne,brokerage
+CASH,2500.00,BrokerOne,brokerage
+AMD,12.0,BrokerTwo,ROTH IRA
+QQQ,8.0,BrokerTwo,ROTH IRA
+VGT,6.0,BrokerTwo,ROTH IRA
+SPAXX,1200.00,BrokerTwo,ROTH IRA
+JPM,20.0,BrokerThree,brokerage
+XOM,25.0,BrokerThree,brokerage
+BTC-USD,0.120000,CryptoExchange,brokerage
+ETH-USD,1.800000,CryptoExchange,brokerage
