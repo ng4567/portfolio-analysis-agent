@@ -2,9 +2,9 @@
 
 ## Intro
 
-This project helps you visualize portfolio allocation using an LLM agent built with the Microsoft Agent Framework. It will create pie chart visualizations in [`analysis.ipynb`](./analysis.ipynb) of allocation in various sectors of all portfolios combined as well as by account type (taxable brokerage, ROTH IRA, 401k).
+This project helps you visualize portfolio allocation using an LLM agent deployed on Microsoft Foundry and orchestrated with the Microsoft Agent Framework. It will create pie chart visualizations in [`analysis.ipynb`](./analysis.ipynb) of your allocation in various market sectors. It visualized all accounts across brokerages combined as well as by account type (taxable brokerage, ROTH IRA, 401k).
 
-There is a template mock data file [`data.csv`](./data.csv). You may feel free to replace it with your actual portfolios to get personalized insights.
+There is a mock data template file [`data.csv`](./data.csv). You may feel free to replace it with your actual portfolios to get personalized insights.
 
 The workflow is:
 
@@ -42,7 +42,7 @@ Runtime flow:
 
 ## Dependencies
 
-### Local runtime dependencies
+### Local Runtime Dependencies
 
 - Python `3.14+`
 - `uv` for local dependency management
@@ -50,7 +50,7 @@ Runtime flow:
 - Azure CLI (`az`) for provisioning checks and deployment inspection
 - Authenticated Azure session (`az login`) for dependency checks
 
-### Azure dependencies that must be provisioned
+### Azure Dependencies
 
 - Azure subscription (`AZURE_SUBSCRIPTION_ID`)
 - Azure AI Foundry account (`Microsoft.CognitiveServices/accounts`)
