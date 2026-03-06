@@ -1,0 +1,183 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.41.2.15936",
+      "templateHash": "10207337568911693232"
+    }
+  },
+  "parameters": {
+    "subscriptionId": {
+      "type": "string",
+      "metadata": {
+        "description": "Subscription ID to check."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "eastus",
+      "metadata": {
+        "description": "Azure location used for temporary dependency-check resources."
+      }
+    },
+    "resourceGroupName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource group containing the Foundry account. Leave empty to skip deployment-level checks."
+      }
+    },
+    "foundryAccountName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Foundry account name to validate. Leave empty to only verify that at least one account exists."
+      }
+    },
+    "requiredDeployments": {
+      "type": "array",
+      "defaultValue": [
+        "gpt-5.4",
+        "grok-4-1-fast-reasoning"
+      ],
+      "metadata": {
+        "description": "Model deployment names required for this project."
+      }
+    }
+  },
+  "variables": {
+    "checkResourceGroupName": "portfolio-analysis-dependency-check-rg"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('checkResourceGroupName')]",
+      "location": "[parameters('location')]"
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "portfolio-analysis-dependency-check-module",
+      "resourceGroup": "[variables('checkResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "subscriptionId": {
+            "value": "[parameters('subscriptionId')]"
+          },
+          "resourceGroupName": {
+            "value": "[parameters('resourceGroupName')]"
+          },
+          "foundryAccountName": {
+            "value": "[parameters('foundryAccountName')]"
+          },
+          "requiredDeployments": {
+            "value": "[parameters('requiredDeployments')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "11301491913839767201"
+            }
+          },
+          "parameters": {
+            "subscriptionId": {
+              "type": "string",
+              "metadata": {
+                "description": "Subscription ID to check."
+              }
+            },
+            "resourceGroupName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource group containing the Foundry account. Leave empty to skip deployment-level checks."
+              }
+            },
+            "foundryAccountName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Foundry account name to validate. Leave empty to only verify that at least one account exists."
+              }
+            },
+            "requiredDeployments": {
+              "type": "array",
+              "defaultValue": [
+                "gpt-5.4",
+                "grok-4-1-fast-reasoning"
+              ],
+              "metadata": {
+                "description": "Model deployment names required for this project."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Resources/deploymentScripts",
+              "apiVersion": "2023-08-01",
+              "name": "portfolio-analysis-dependency-check",
+              "location": "[resourceGroup().location]",
+              "kind": "AzureCLI",
+              "properties": {
+                "azCliVersion": "2.63.0",
+                "cleanupPreference": "OnSuccess",
+                "retentionInterval": "P1D",
+                "timeout": "PT15M",
+                "environmentVariables": [
+                  {
+                    "name": "CHECK_SUBSCRIPTION_ID",
+                    "value": "[parameters('subscriptionId')]"
+                  },
+                  {
+                    "name": "CHECK_RESOURCE_GROUP_NAME",
+                    "value": "[parameters('resourceGroupName')]"
+                  },
+                  {
+                    "name": "CHECK_FOUNDRY_ACCOUNT_NAME",
+                    "value": "[parameters('foundryAccountName')]"
+                  },
+                  {
+                    "name": "CHECK_REQUIRED_DEPLOYMENTS",
+                    "value": "[join(parameters('requiredDeployments'), ',')]"
+                  }
+                ],
+                "scriptContent": "      #!/usr/bin/env bash\n      set -euo pipefail\n\n      SUB_ID=\"$CHECK_SUBSCRIPTION_ID\"\n      RG_NAME=\"$CHECK_RESOURCE_GROUP_NAME\"\n      ACCOUNT_NAME=\"$CHECK_FOUNDRY_ACCOUNT_NAME\"\n      REQUIRED_DEPLOYMENTS=\"$CHECK_REQUIRED_DEPLOYMENTS\"\n\n      foundry_accounts_json=$(az resource list \\\n        --subscription \"$SUB_ID\" \\\n        --resource-type \"Microsoft.CognitiveServices/accounts\" \\\n        -o json)\n\n      foundry_count=$(echo \"$foundry_accounts_json\" | jq 'length')\n      missing=()\n      recommendations=()\n\n      if [[ \"$foundry_count\" -eq 0 ]]; then\n        missing+=(\"Azure AI Foundry account (Microsoft.CognitiveServices/accounts)\")\n        recommendations+=(\"Provision an Azure AI Foundry account in the target subscription.\")\n      fi\n\n      if [[ -n \"$ACCOUNT_NAME\" ]]; then\n        account_match_count=$(echo \"$foundry_accounts_json\" | jq --arg name \"$ACCOUNT_NAME\" '[.[] | select(.name == $name)] | length')\n        if [[ \"$account_match_count\" -eq 0 ]]; then\n          missing+=(\"Foundry account named '$ACCOUNT_NAME'\")\n          recommendations+=(\"Provision Foundry account '$ACCOUNT_NAME' or update FOUNDRY_ACCOUNT_NAME in .env.\")\n        fi\n      fi\n\n      if [[ -n \"$RG_NAME\" && -n \"$ACCOUNT_NAME\" ]]; then\n        deployment_names=$(az cognitiveservices account deployment list \\\n          -g \"$RG_NAME\" \\\n          -n \"$ACCOUNT_NAME\" \\\n          --subscription \"$SUB_ID\" \\\n          --query \"[].name\" \\\n          -o tsv || true)\n\n        IFS=',' read -r -a required_array <<< \"$REQUIRED_DEPLOYMENTS\"\n        for deployment in \"${required_array[@]}\"; do\n          deployment_trimmed=\"$(echo \"$deployment\" | xargs)\"\n          if [[ -n \"$deployment_trimmed\" ]] && ! echo \"$deployment_names\" | tr ' ' '\\n' | grep -Fxq \"$deployment_trimmed\"; then\n            missing+=(\"Model deployment '$deployment_trimmed'\")\n            recommendations+=(\"Deploy model '$deployment_trimmed' to Foundry account '$ACCOUNT_NAME'.\")\n          fi\n        done\n      else\n        recommendations+=(\"Set RESOURCE_GROUP_NAME and FOUNDRY_ACCOUNT_NAME in .env to enable deployment-level checks.\")\n      fi\n\n      status=\"ok\"\n      if [[ \"${#missing[@]}\" -gt 0 ]]; then\n        status=\"missing_dependencies\"\n      fi\n\n      jq -n \\\n        --arg status \"$status\" \\\n        --argjson foundryCount \"$foundry_count\" \\\n        --argjson missing \"$(printf '%s\\n' \"${missing[@]}\" | jq -R . | jq -s .)\" \\\n        --argjson recommendations \"$(printf '%s\\n' \"${recommendations[@]}\" | jq -R . | jq -s .)\" \\\n        '{\n          status: $status,\n          foundryAccountCount: $foundryCount,\n          missing: $missing,\n          recommendations: $recommendations\n        }' > \"$AZ_SCRIPTS_OUTPUT_PATH\"\n    "
+              }
+            }
+          ],
+          "outputs": {
+            "results": {
+              "type": "object",
+              "value": "[reference(resourceId('Microsoft.Resources/deploymentScripts', 'portfolio-analysis-dependency-check'), '2023-08-01').outputs]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('checkResourceGroupName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "results": {
+      "type": "object",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('checkResourceGroupName')), 'Microsoft.Resources/deployments', 'portfolio-analysis-dependency-check-module'), '2025-04-01').outputs.results.value]"
+    },
+    "checkerResourceGroup": {
+      "type": "string",
+      "value": "[variables('checkResourceGroupName')]"
+    }
+  }
+}

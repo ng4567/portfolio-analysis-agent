@@ -1,79 +1,104 @@
-# Portfolio Analysis
+# Portfolio Analysis Agent
 
-This repo has two main scripts:
+## Intro
 
-- `pull_info.py` updates a holdings CSV with current market values from Yahoo Finance
-- `agent.py` runs a Microsoft Agent Framework client against your Foundry models and can classify holdings in the CSV
+This project helps you visualize portfolio allocation using an LLM agent built with the Microsoft Agent Framework. It will create pie chart visualizations in [`analysis.ipynb`](./analysis.ipynb) of allocation in various sectors of all portfolios combined as well as by account type (taxable brokerage, ROTH IRA, 401k).
+
+There is a template mock data file [`data.csv`](./data.csv). You may feel free to replace it with your actual portfolios to get personalized insights.
+
+The workflow is:
+
+1. Refresh holdings with current market values.
+2. Classify each holding into a category (for example `tech`, `crypto`, `cash`, `semiconductors`).
+3. Ask the agent to summarize your portfolio using the refreshed data.
+4. Visualize the results in a Jupyter Notebook
+
+## Scripts
+
+- [`pull_info.py`](./pull_info.py)
+  - Updates a holdings CSV with fresh `value` data from Yahoo Finance.
+  - Supports `CASH` rows with fixed price `1.0`.
+  - Prints broker/account totals and total portfolio value.
+- [`agent.py`](./agent.py)
+  - Calls `pull_info` first on every run.
+  - Runs an LLM written in Microsoft Agent Framework against deployed Foundry models (`gpt` or `grok`).
+  - Can classify holdings and append/overwrite a `classification` column.
+  - Automatically fails over to the other model on rate-limit errors.
+
+## Architecture
+
+- Data source: CSV holdings file (example: [`data.csv`](./data.csv)).
+- Price refresh: Yahoo Finance via [`pull_info.py`](./pull_info.py).
+- LLM orchestration: Microsoft Agent Framework via [`agent.py`](./agent.py).
+- Model endpoint: Azure AI Foundry model inference API.
+- Auth: service principal credentials from [`.env`](./.env) (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`).
+
+Runtime flow:
+
+1. `agent.py` loads `.env`.
+2. `agent.py` refreshes the target CSV via `pull_info`.
+3. If `--classify-csv` is used, the script classifies holdings with the LLM and updates the CSV.
+4. Otherwise, the script sends portfolio context + your prompt to the agent and returns a response.
+
+## Dependencies
+
+### Local runtime dependencies
+
+- Python `3.14+`
+- `uv` for local dependency management
+- Docker + Docker Compose (only if running containerized)
+- Azure CLI (`az`) for provisioning checks and deployment inspection
+- Authenticated Azure session (`az login`) for dependency checks
+
+### Azure dependencies that must be provisioned
+
+- Azure subscription (`AZURE_SUBSCRIPTION_ID`)
+- Azure AI Foundry account (`Microsoft.CognitiveServices/accounts`)
+- Foundry model deployments:
+  - `gpt-5.4`
+  - `grok-4-1-fast-reasoning`
+- Service principal with access to Foundry:
+  - `AZURE_TENANT_ID`
+  - `AZURE_CLIENT_ID`
+  - `AZURE_CLIENT_SECRET`
+
+### Dependency checker (Bicep)
+
+This repo includes:
+
+- Bicep template: [`infra/dependency-check.bicep`](./infra/dependency-check.bicep)
+- Wrapper script: [`scripts/check-dependencies.sh`](./scripts/check-dependencies.sh)
+
+The wrapper reads `.env` (including `AZURE_SUBSCRIPTION_ID`) and runs a subscription-scope deployment that reports missing dependencies and recommended provisioning actions.
+By default, the wrapper uses a fast local Azure CLI check. To force the ARM/Bicep deployment path, set `USE_BICEP_CHECK=true`.
 
 ## Setup
 
-Install dependencies with:
+### Containerized
+
+Build once:
+
+```bash
+docker compose build
+```
+
+Compose config is in [`docker-compose.yml`](./docker-compose.yml), image build is in [`Dockerfile`](./Dockerfile), and `.env` is mounted into `/app`.
+
+### Local
 
 ```bash
 uv sync
 ```
 
-The agent script expects a populated `.env` file with your Foundry endpoint and service principal credentials.
-
-## CSV Format
-
-The holdings CSV is expected to use this schema:
-
-```csv
-ticker,num_shares,broker,type
-```
-
-After `pull_info.py` runs, the file is rewritten with:
-
-```csv
-ticker,num_shares,broker,type,value
-```
-
-After `agent.py --classify-csv` runs, the file is rewritten with:
-
-```csv
-ticker,num_shares,broker,type,value,classification
-```
-
-`data.csv` in this repo is mock data for safe sharing. Keep real holdings in a local file such as `nikhil-data.csv` (ignored by Git) and run scripts with `--source` or `--classify-csv` pointing to that file.
-
-## `pull_info.py`
-
-`pull_info.py` reads a CSV, fetches current prices from Yahoo Finance, overwrites the `value` column with fresh data, and prints totals grouped by broker and account type.
-
-### Default usage
-
-If no path is supplied, it uses `data.csv` in the repo root:
-
-```bash
-uv run python pull_info.py
-```
-
-### Custom CSV path
-
-```bash
-uv run python pull_info.py /path/to/holdings.csv
-```
-
-### Notes
-
-- If the file does not exist, the script raises an error telling you to pass a path explicitly.
-- If a row uses `CASH` as the ticker, the script prices it at `1.0` instead of calling Yahoo Finance.
-- Fractional shares are supported.
-- The file is updated in place.
-
-## `agent.py`
-
-`agent.py` uses Microsoft Agent Framework plus a Foundry-hosted model. It authenticates with a service principal stored in `.env`.
-Every time it runs, it first refreshes the target CSV by calling `pull_info.py` logic.
-
-### Required `.env` fields
-
-These fields are used by the current script:
+Create [`.env`](./.env) from [`.env.template`](./.env.template), then edit `.env` with your real values:
 
 ```env
 DEFAULT_MODEL="gpt"
 FOUNDRY_BASE_URL="https://<resource>.services.ai.azure.com/models"
+AZURE_SUBSCRIPTION_ID="..."
+AZURE_LOCATION="eastus"
+RESOURCE_GROUP_NAME="..."
+FOUNDRY_ACCOUNT_NAME="..."
 AZURE_TENANT_ID="..."
 AZURE_CLIENT_ID="..."
 AZURE_CLIENT_SECRET="..."
@@ -81,84 +106,76 @@ GPT_MODEL="gpt-5.4"
 GROK_MODEL="grok-4-1-fast-reasoning"
 ```
 
-### Run a normal prompt
+## CSV Format
 
-Use the default model from `.env`:
+Input schema:
 
-```bash
-uv run python agent.py "Summarize this portfolio."
+```csv
+ticker,num_shares,broker,type
 ```
 
-Force GPT:
+After `pull_info.py`:
 
-```bash
-uv run python agent.py --model gpt "Summarize this portfolio."
+```csv
+ticker,num_shares,broker,type,value
 ```
 
-Force Grok:
+After `agent.py --classify-csv`:
 
-```bash
-uv run python agent.py --model grok "Summarize this portfolio."
+```csv
+ticker,num_shares,broker,type,value,classification
 ```
 
-Override the system prompt:
+[`data.csv`](./data.csv) in this repo is mock data for safe sharing. Keep personal holdings in a local ignored file (for example [`nikhil-data.csv`](./nikhil-data.csv)).
+
+## Usage
+
+### Refresh prices
 
 ```bash
-uv run python agent.py --model grok --system "You are a strict financial classifier." "Classify MSFT."
+uv run python pull_info.py data.csv
 ```
 
-Use a non-default CSV for the refresh step:
+Container:
 
 ```bash
-uv run python agent.py --source /path/to/holdings.csv "Summarize this portfolio."
+docker compose run --rm app python pull_info.py
 ```
 
-## CSV Classification With `agent.py`
-
-`agent.py` can also classify each holding in the CSV and append a `classification` column.
-
-### Default CSV
+### Check if Cloud Dependencies are Provisioned
 
 ```bash
-uv run python agent.py --model grok --classify-csv
+bash scripts/check-dependencies.sh
 ```
 
-This defaults to `data.csv`.
-
-### Custom CSV path
+Force ARM/Bicep path:
 
 ```bash
-uv run python agent.py --model grok --classify-csv /path/to/holdings.csv
+USE_BICEP_CHECK=true bash scripts/check-dependencies.sh
 ```
 
-### Classification behavior
-
-- The script loops through each CSV row.
-- Before classification starts, the script refreshes prices in the same CSV via `pull_info.py`.
-- It reuses the same classification for repeated tickers.
-- If the `classification` column already exists, it is overwritten.
-- Common symbols in the current portfolio are classified locally without calling the model.
-- Unknown symbols fall back to the selected Foundry model.
-
-Examples of current categories include:
-
-- `MSFT` -> `tech`
-- `IBM` -> `tech`
-- `AMD` -> `semiconductors`
-- `NVDA` -> `semiconductors`
-- `BTC-USD` -> `crypto`
-- `CASH` -> `cash`
-
-## Typical Workflow
-
-Update prices first:
+### Ask the agent for a summary
 
 ```bash
-uv run python pull_info.py
+uv run python agent.py --source data.csv "Summarize my portfolio" --model grok
+uv run python agent.py --source nikhil-data.csv "Summarize my portfolio" --model gpt
 ```
 
-Then classify holdings:
+Container:
 
 ```bash
-uv run python agent.py --model grok --classify-csv data.csv
+docker compose run --rm app python agent.py --source data.csv "Summarize my portfolio" --model grok
+```
+
+### Classify holdings
+
+```bash
+uv run python agent.py --classify-csv data.csv --model grok
+uv run python agent.py --classify-csv nikhil-data.csv --model gpt
+```
+
+Container:
+
+```bash
+docker compose run --rm app python agent.py --classify-csv data.csv --model grok
 ```
